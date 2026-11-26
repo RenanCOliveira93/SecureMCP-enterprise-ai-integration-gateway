@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import httpx
 import pytest
 from mcp import Client
 
 from securemcp.config import Settings
 from securemcp.container import build_container
-from securemcp.db.database import create_schema
+from securemcp.db.database import Database, create_schema
 from securemcp.db.seed import seed
 from securemcp.integrations.http import RetryPolicy
 from securemcp.mcp_server.server import build_server
@@ -22,11 +24,17 @@ def anyio_backend():
     return "asyncio"
 
 
+# SECUREMCP_TEST_BACKEND=postgres runs the whole suite as the RLS-constrained app role (see `make test-pg`).
+PG_OWNER_URL = os.environ.get("SECUREMCP_TEST_POSTGRES_URL")
+PG_APP_URL = os.environ.get("SECUREMCP_TEST_POSTGRES_APP_URL")
+ON_POSTGRES = os.environ.get("SECUREMCP_TEST_BACKEND") == "postgres" and bool(PG_OWNER_URL and PG_APP_URL)
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(
         env="test",
-        database_url=f"sqlite+aiosqlite:///{tmp_path}/securemcp.db",
+        database_url=PG_APP_URL if ON_POSTGRES else f"sqlite+aiosqlite:///{tmp_path}/securemcp.db",
         transport="stdio",
         policy_file=ROOT / "config/policy.yaml",
         docs_dir=ROOT / "data/manuals",
@@ -44,7 +52,10 @@ def mocks_app(settings):
 
 @pytest.fixture
 async def container(settings, mocks_app):
-    await create_schema(settings.database_url)
+    if ON_POSTGRES:
+        await create_schema(PG_OWNER_URL, reset=True)
+    else:
+        await create_schema(settings.database_url)
     transport = httpx.ASGITransport(app=mocks_app)
     c = build_container(
         settings,
@@ -53,7 +64,12 @@ async def container(settings, mocks_app):
         notifications_transport=transport,
         retry=RetryPolicy(max_attempts=3, base_delay=0.01),
     )
-    await seed(c.db)
+    if ON_POSTGRES:
+        owner = Database(PG_OWNER_URL)
+        await seed(owner)
+        await owner.dispose()
+    else:
+        await seed(c.db)
     yield c
     await c.aclose()
 

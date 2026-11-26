@@ -20,5 +20,8 @@ silent tampering detectable. It must not become a second copy of sensitive data.
 ## Consequences
 - Audit writes serialize per tenant (chain head lock). At demo scale this is negligible; at high volume, batch or
   shard the chain.
-- Audit writing failure fails the request closed (no unaudited side effects) for writes; for reads it is logged and
-  the read still returns.
+- The audit event is written after the operation finishes, in its own transaction, so it records the real outcome.
+  If that write fails, the outcome returned to the caller is unchanged and the sanitized event is logged at `ERROR`
+  (`AUDIT WRITE FAILED`) so it can be replayed. Failing the request instead would not undo a side effect that
+  already happened downstream. Production follow-up: a transactional outbox that commits the audit event together
+  with the business change, plus an alert on that log line.
