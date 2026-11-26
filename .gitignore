@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.env
+.securemcp/
+*.db
+*.sqlite
+deploy/secrets/*
+!deploy/secrets/README.md
+.DS_Store

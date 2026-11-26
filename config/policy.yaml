@@ -1,0 +1,97 @@
+# SecureMCP gateway policy. Deny by default: operations not listed here do not exist.
+# Loaded and validated at startup by securemcp.security.policy (unknown keys/operators fail fast).
+version: "2026.11.1"
+
+permissions:
+  - clients:read
+  - cameras:read
+  - contracts:read
+  - tickets:read
+  - tickets:write
+  - maintenance:read
+  - maintenance:write
+  - notifications:send
+  - docs:read
+  - approvals:decide
+
+roles:
+  viewer: [clients:read, cameras:read, contracts:read, tickets:read, maintenance:read, docs:read]
+  support_agent: [clients:read, cameras:read, contracts:read, tickets:read, maintenance:read, docs:read,
+                  tickets:write]
+  operations_manager: [clients:read, cameras:read, contracts:read, tickets:read, maintenance:read, docs:read,
+                       tickets:write, maintenance:write, notifications:send, approvals:decide]
+  tenant_admin: [clients:read, cameras:read, contracts:read, tickets:read, maintenance:read, docs:read,
+                 tickets:write, maintenance:write, notifications:send, approvals:decide]
+
+rate_limits:
+  read: {capacity: 30, refill_per_second: 2.0}
+  write: {capacity: 5, refill_per_second: 0.2}
+  tenant: {capacity: 200, refill_per_second: 20.0}
+
+timeouts:
+  read_seconds: 3.0
+  write_seconds: 8.0
+
+approvals:
+  ttl_seconds: 900
+  four_eyes: true
+  decide_permission: approvals:decide
+
+operations:
+  # ---------------------------------------------------------------- read tools
+  get_client: {kind: tool, permission: clients:read, risk: low, class: read}
+  list_camera_health: {kind: tool, permission: cameras:read, risk: low, class: read}
+  get_contract_modules: {kind: tool, permission: contracts:read, risk: low, class: read}
+  search_tickets: {kind: tool, permission: tickets:read, risk: low, class: read}
+  get_maintenance_window: {kind: tool, permission: maintenance:read, risk: low, class: read}
+
+  # --------------------------------------------------------------- write tools
+  create_support_ticket:
+    kind: tool
+    permission: tickets:write
+    risk: medium
+    class: write
+    idempotent: true
+    approval_when:
+      - {id: critical_priority, field: priority, op: eq, value: critical,
+         reason: "Critical tickets page on-call engineers"}
+
+  schedule_maintenance:
+    kind: tool
+    permission: maintenance:write
+    risk: high
+    class: write
+    idempotent: true
+    approval_when:
+      - {id: long_window, field: duration_minutes, op: gt, value: 120,
+         reason: "Maintenance longer than 2 hours leaves stores without loss-prevention coverage"}
+      - {id: many_cameras, field: camera_ids, op: count_gt, value: 10,
+         reason: "Maintenance on more than 10 cameras at once"}
+
+  send_notification:
+    kind: tool
+    permission: notifications:send
+    risk: high
+    class: write
+    idempotent: true
+    approval_when:
+      - {id: broadcast, field: audience, op: eq, value: all_contacts,
+         reason: "Notifications to every contact of a client"}
+      - {id: sms_channel, field: channel, op: eq, value: sms,
+         reason: "SMS reaches personal phones and costs money"}
+
+  # ----------------------------------------------------------------- resources
+  client_summary: {kind: resource, permission: clients:read, risk: low, class: read}
+  camera_health: {kind: resource, permission: cameras:read, risk: low, class: read}
+  manual: {kind: resource, permission: docs:read, risk: low, class: read}
+  manual_index: {kind: resource, permission: docs:read, risk: low, class: read}
+  ticket: {kind: resource, permission: tickets:read, risk: low, class: read}
+
+  # ------------------------------------------------------------------- prompts
+  incident_triage: {kind: prompt, permission: tickets:read, risk: low, class: read}
+  customer_support_summary: {kind: prompt, permission: clients:read, risk: low, class: read}
+  maintenance_plan: {kind: prompt, permission: maintenance:read, risk: low, class: read}
+
+  # ------------------------------------------------- out-of-band (HTTP, not MCP)
+  list_approvals: {kind: http, permission: approvals:decide, risk: low, class: read}
+  decide_approval: {kind: http, permission: approvals:decide, risk: high, class: write}

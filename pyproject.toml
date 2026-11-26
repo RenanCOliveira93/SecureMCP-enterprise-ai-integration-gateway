@@ -1,0 +1,47 @@
+[project]
+name = "securemcp"
+version = "0.1.0"
+description = "Enterprise MCP gateway: typed tools, resources and prompts behind OAuth, RBAC, tenant isolation, policy, idempotency and audit."
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.11"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "anthropic>=2.14.0",
+    "cryptography>=50.0.2",
+    "fastapi>=0.165.0",
+    "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
+    "langgraph>=1.2.24",
+    "mcp[cli]>=2.3.0",
+    "opentelemetry-api>=1.45.2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-sdk>=1.45.2",
+    "psycopg[binary]>=3.3.9",
+    "pydantic>=2.14.4",
+    "pydantic-settings>=2.16.3",
+    "pyjwt>=2.15.1",
+    "pyyaml>=6.0.4",
+    "rich>=15.0.0",
+    "sqlalchemy>=2.0",
+    "tenacity>=9.2.1",
+    "typer>=0.29.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/securemcp"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
+    "types-pyyaml>=6.0.12.20261122",
+]
