@@ -23,8 +23,7 @@ dependencies = [
     "pyjwt>=2.15.1",
     "pyyaml>=6.0.4",
     "rich>=15.0.0",
-    "sqlalchemy>=2.0",
-    "tenacity>=9.2.1",
+    "sqlalchemy[asyncio]>=2.0",
     "typer>=0.29.3",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -40,8 +39,29 @@ packages = ["src/securemcp"]
 dev = [
     "mypy>=2.4.1",
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.6",
     "types-pyyaml>=6.0.12.20261122",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+markers = [
+  "postgres: needs SECUREMCP_TEST_POSTGRES_URL (owner) and SECUREMCP_TEST_POSTGRES_APP_URL",
+  "http: starts real HTTP servers on localhost",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = ["S101", "B008", "RUF001", "RUF002", "RUF003", "S105", "S106"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B", "RUF"]
+"src/securemcp/db/seed.py" = ["E501", "S311"]
