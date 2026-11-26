@@ -1,0 +1,61 @@
+# Synthetic identities for the local authorization server. NOT real people.
+# Every user's development password is documented in the README (shared, dev-only).
+# Hashes: PBKDF2-HMAC-SHA256, 600k iterations. Regenerate with: securemcp hash-password
+users:
+- username: ana
+  subject: usr_aur_ana
+  tenant_id: tnt_aurora
+  roles:
+  - viewer
+  password_hash: pbkdf2_sha256$600000$B9iRiBJOP-iyT4yE-dqsvQ$-T284H3CfUOoafiy4IUJdTfeW1QTk7FVYf0XCi7ZsWM
+- username: bruno
+  subject: usr_aur_bruno
+  tenant_id: tnt_aurora
+  roles:
+  - support_agent
+  password_hash: pbkdf2_sha256$600000$cMN1P-ggcyQLPh0CmTX1bw$ofRvmFFpUUNzhKaFUf74Z4CW-pA7ZHkRk-z-c_zJeZQ
+- username: carla
+  subject: usr_aur_carla
+  tenant_id: tnt_aurora
+  roles:
+  - operations_manager
+  password_hash: pbkdf2_sha256$600000$YfOXyoHVnB2EEai2jPXGbQ$QqfkT0PfDQllWtLHape5zOESAT3a8XzPlXT1LjxX1H4
+- username: diego
+  subject: usr_aur_diego
+  tenant_id: tnt_aurora
+  roles:
+  - tenant_admin
+  password_hash: pbkdf2_sha256$600000$68y47jaT-a96U2xACf5TQA$iFj-lgkWTzMtmD0el6ubHVKQl5Y4M1-hSjtxz6_Q-Cc
+- username: eva
+  subject: usr_bor_eva
+  tenant_id: tnt_boreal
+  roles:
+  - support_agent
+  password_hash: pbkdf2_sha256$600000$ZN8ZYjs-7tBL-9cY04tejg$JYwPu_wZqzMFQ6V3_Ht4rrmWTsJDmtrar3E-W6_EBHY
+- username: fabio
+  subject: usr_bor_fabio
+  tenant_id: tnt_boreal
+  roles:
+  - operations_manager
+  password_hash: pbkdf2_sha256$600000$mphwV75QPQS45qI7NFJs4A$BT8Lj0oZiqunJJqzaul9Vl3YCI_xjI26QNXef8yg_sc
+clients:
+- client_id: securemcp-host
+  name: SecureMCP demo host (AI agent)
+  redirect_uris:
+  - http://127.0.0.1:8976/callback
+  allowed_scopes:
+  - clients:read
+  - cameras:read
+  - contracts:read
+  - tickets:read
+  - tickets:write
+  - maintenance:read
+  - maintenance:write
+  - notifications:send
+  - docs:read
+- client_id: securemcp-approvals
+  name: SecureMCP approval console (humans only)
+  redirect_uris:
+  - http://127.0.0.1:8977/callback
+  allowed_scopes:
+  - approvals:decide
