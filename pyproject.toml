@@ -30,6 +30,7 @@ dependencies = [
 
 [project.scripts]
 securemcp = "securemcp.cli:app"
+securemcp-host = "securemcp.host.cli:app"
 
 [build-system]
 requires = ["hatchling"]
