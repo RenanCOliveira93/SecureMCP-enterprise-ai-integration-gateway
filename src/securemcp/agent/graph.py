@@ -34,7 +34,7 @@ from securemcp.agent.planners import Final, Planner
 
 log = logging.getLogger(__name__)
 
-# Retry budget. The gateway already retries transient downstream failures (ADR-0009), so an UPSTREAM_UNAVAILABLE
+# Retry budget. The gateway already retries transient downstream failures (ADR-0008), so an UPSTREAM_UNAVAILABLE
 # it returns means its own attempts were exhausted: the agent adds at most one more attempt to avoid multiplying
 # load. Lost connections between agent and gateway get two retries (the idempotency key makes them safe).
 MAX_TRANSPORT_RETRIES = 2

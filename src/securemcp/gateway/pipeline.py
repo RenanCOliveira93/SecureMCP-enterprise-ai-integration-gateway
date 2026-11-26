@@ -147,7 +147,8 @@ class Gateway:
                 raise err from exc
             finally:
                 record.duration_ms = int((time.monotonic() - started) * 1000)
-                for key in ("tenant_id", "subject", "status", "error_code", "policy_id", "risk"):
+                span.set_attribute("securemcp.duration_ms", record.duration_ms)
+                for key in ("tenant_id", "subject", "client_id", "status", "error_code", "policy_id", "risk"):
                     value = getattr(record, key)
                     if value is not None:
                         span.set_attribute(f"securemcp.{key}", value)
@@ -157,13 +158,14 @@ class Gateway:
                     span.set_status(trace.Status(trace.StatusCode.ERROR, record.error_code))
                 await self.audit.safe_append(record)
                 log.info(
-                    "op=%s status=%s code=%s policy=%s tenant=%s subject=%s %dms",
+                    "op=%s status=%s code=%s policy=%s tenant=%s subject=%s client=%s %dms",
                     name,
                     record.status,
                     record.error_code,
                     record.policy_id,
                     record.tenant_id,
                     record.subject,
+                    record.client_id,
                     record.duration_ms,
                 )
                 request_id_var.reset(token)

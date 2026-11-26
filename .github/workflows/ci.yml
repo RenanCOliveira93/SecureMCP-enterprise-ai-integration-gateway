@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: securemcp_owner
+          POSTGRES_PASSWORD: owner-test-only
+          POSTGRES_DB: securemcp
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U securemcp_owner -d securemcp"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      SECUREMCP_TEST_POSTGRES_URL: postgresql+psycopg://securemcp_owner:owner-test-only@127.0.0.1:55432/securemcp
+      SECUREMCP_TEST_POSTGRES_APP_URL: postgresql+psycopg://securemcp_app:app-test-only@127.0.0.1:55432/securemcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - name: Create the least-privilege application role (same script as Compose)
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "55432"
+          PGPASSWORD: owner-test-only
+          POSTGRES_USER: securemcp_owner
+          POSTGRES_DB: securemcp
+          POSTGRES_APP_PASSWORD_FILE: deploy/postgres/test-app-password
+        run: sh deploy/postgres/10-app-role.sh
+      - name: Unit and integration tests (SQLite) + PostgreSQL RLS tests
+        run: uv run pytest --cov=securemcp --cov-report=term-missing:skip-covered
+      - name: Integration suite on PostgreSQL as the RLS-constrained role
+        run: SECUREMCP_TEST_BACKEND=postgres uv run pytest tests/integration -m "not http"
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t securemcp:ci .
+      - run: docker run --rm securemcp:ci --help

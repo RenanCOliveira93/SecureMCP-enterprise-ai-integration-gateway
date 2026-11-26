@@ -1,0 +1,145 @@
+# Local, production-shaped topology. Every port is published on 127.0.0.1 only.
+# First run: `make secrets` (creates deploy/secrets/*), then `make up`.
+
+x-app: &app
+  image: securemcp:local
+  pull_policy: never  # built once by the `mcp` service below, shared by every app container
+  restart: unless-stopped
+  environment: &app-env
+    SECUREMCP_ENV: dev
+    SECUREMCP_LOG_FORMAT: json
+    SECUREMCP_SECRETS_BACKEND: file
+    SECUREMCP_SECRETS_DIR: /run/secrets
+    SECUREMCP_POLICY_FILE: /app/config/policy.yaml
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: securemcp_owner
+      POSTGRES_DB: securemcp
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_owner_password
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+    secrets: [postgres_owner_password, postgres_app_password]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/10-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securemcp_owner -d securemcp"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["db", "init", "--seed"]
+    environment:
+      <<: *app-env
+      SECUREMCP_DATABASE_URL: postgresql+psycopg://securemcp_owner@postgres:5432/securemcp
+      SECUREMCP_DATABASE_PASSWORD_SECRET: postgres_owner_password
+    secrets: [postgres_owner_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  auth:
+    <<: *app
+    command: ["auth-server"]
+    environment:
+      <<: *app-env
+      SECUREMCP_AS_ISSUER: http://localhost:9000
+      SECUREMCP_AS_BIND_HOST: 0.0.0.0
+      SECUREMCP_AS_ALLOWED_RESOURCES: http://localhost:8000/mcp
+      SECUREMCP_AS_USERS_FILE: /app/config/auth-users.yaml
+    secrets: [auth_signing_key]
+    ports: ["127.0.0.1:9000:9000"]
+    healthcheck: &http-health
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=2)", "http://127.0.0.1:9000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mocks:
+    <<: *app
+    command: ["mocks"]
+    environment:
+      <<: *app-env
+      SECUREMCP_MOCKS_BIND_HOST: 0.0.0.0
+    secrets: [crm_api_key, notifications_api_key]
+    ports: ["127.0.0.1:8081:8081"]  # published only so `securemcp scenarios` can inject faults
+    healthcheck:
+      <<: *http-health
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=2)", "http://127.0.0.1:8081/healthz"]
+
+  mcp:
+    <<: *app
+    build: .
+    pull_policy: build
+    command: ["serve"]
+    environment:
+      <<: *app-env
+      SECUREMCP_PUBLIC_URL: http://localhost:8000/mcp
+      SECUREMCP_BIND_HOST: 0.0.0.0
+      SECUREMCP_ALLOWED_HOSTS: localhost:*,127.0.0.1:*,mcp:*
+      SECUREMCP_DATABASE_URL: postgresql+psycopg://securemcp_app@postgres:5432/securemcp
+      SECUREMCP_DATABASE_PASSWORD_SECRET: postgres_app_password
+      SECUREMCP_AUTH_ISSUER: http://localhost:9000   # must equal the `iss` the host sees
+      SECUREMCP_AUTH_JWKS_URL: http://auth:9000/jwks.json  # fetched over the internal network
+      SECUREMCP_CRM_URL: http://mocks:8081/crm
+      SECUREMCP_NOTIFICATIONS_URL: http://mocks:8081/notifications
+      SECUREMCP_OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    secrets: [postgres_app_password, crm_api_key, notifications_api_key]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      auth: {condition: service_healthy}
+      mocks: {condition: service_healthy}
+    healthcheck:
+      <<: *http-health
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen(sys.argv[1], timeout=2)", "http://127.0.0.1:8000/readyz"]
+
+  otel-collector:
+    image: docker.io/otel/opentelemetry-collector-contrib:0.115.1
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/otel/collector.yaml:/etc/otelcol/config.yaml:ro
+
+  jaeger:
+    image: docker.io/jaegertracing/all-in-one:1.64.0
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["127.0.0.1:16686:16686"]
+
+  # Disposable database for `make test-pg` (schema is reset by the tests). Not started by default.
+  postgres-test:
+    image: docker.io/library/postgres:16-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_USER: securemcp_owner
+      POSTGRES_DB: securemcp
+      POSTGRES_PASSWORD: owner-test-only
+      POSTGRES_APP_PASSWORD_FILE: /run/test/app_password
+    volumes:
+      - ./deploy/postgres/10-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+      - ./deploy/postgres/test-app-password:/run/test/app_password:ro
+    tmpfs: [/var/lib/postgresql/data]
+    ports: ["127.0.0.1:55432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securemcp_owner -d securemcp"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+secrets:
+  auth_signing_key: {file: ./deploy/secrets/auth_signing_key}
+  crm_api_key: {file: ./deploy/secrets/crm_api_key}
+  notifications_api_key: {file: ./deploy/secrets/notifications_api_key}
+  postgres_owner_password: {file: ./deploy/secrets/postgres_owner_password}
+  postgres_app_password: {file: ./deploy/secrets/postgres_app_password}
+
+volumes:
+  pgdata:

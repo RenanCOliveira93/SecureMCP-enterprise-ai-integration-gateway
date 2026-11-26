@@ -1,0 +1,30 @@
+# Traces: gateway -> collector -> Jaeger. The collector is also the last line of defence for telemetry hygiene:
+# it drops attributes that should never leave the process even if a future code change adds them.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  attributes/scrub:
+    actions:
+      - {key: http.request.header.authorization, action: delete}
+      - {key: enduser.id, action: hash}
+      - {pattern: ".*(password|secret|token|api_key).*", action: delete}
+  batch: {}
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/scrub, batch]
+      exporters: [otlp/jaeger, debug]

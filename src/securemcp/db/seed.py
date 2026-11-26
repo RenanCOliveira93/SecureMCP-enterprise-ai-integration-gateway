@@ -162,6 +162,8 @@ async def seed(db: Database, *, now: datetime | None = None) -> dict[str, int]:
 
     for tenant_id, tenant_name in TENANTS.items():
         async with db.tenant_session(tenant_id) as s:
+            if await s.get(Tenant, tenant_id) is not None:
+                continue  # already seeded: running `db init --seed` again is a no-op
             s.add(Tenant(id=tenant_id, tenant_id=tenant_id, name=tenant_name))
             await s.flush()
             for cid, tid, name, segment, region, tier, n_cams, plan in CLIENTS:

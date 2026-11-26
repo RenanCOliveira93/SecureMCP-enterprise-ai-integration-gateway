@@ -9,7 +9,7 @@ import httpx
 from mcp.server.auth.middleware.auth_context import get_access_token
 
 from securemcp.config import Settings
-from securemcp.db.database import Database
+from securemcp.db.database import Database, with_secret_password
 from securemcp.gateway.approvals import ApprovalStore
 from securemcp.gateway.audit import AuditTrail
 from securemcp.gateway.idempotency import IdempotencyStore
@@ -73,7 +73,7 @@ def build_container(
     retry: RetryPolicy | None = None,
 ) -> Container:
     secrets = build_secret_provider(settings)
-    db = Database(settings.database_url)
+    db = Database(with_secret_password(settings.database_url, settings.database_password_secret, secrets))
     policy = PolicyEngine.from_file(settings.policy_file)
     verifier = verifier or JwtTokenVerifier(
         issuer=settings.auth_issuer,

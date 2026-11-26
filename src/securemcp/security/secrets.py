@@ -16,7 +16,14 @@ from securemcp.config import Settings
 
 log = logging.getLogger(__name__)
 
-KNOWN_SECRETS = ("auth_signing_key", "notifications_api_key", "crm_api_key")
+KNOWN_SECRETS = (
+    "auth_signing_key",
+    "notifications_api_key",
+    "crm_api_key",
+    "postgres_owner_password",
+    "postgres_app_password",
+)
+_NO_FALLBACK = ("auth_signing_key", "postgres_owner_password", "postgres_app_password")
 
 
 class SecretNotFound(LookupError):
@@ -56,7 +63,8 @@ class DevFallbackSecretProvider:
     """Wraps a provider; outside ``prod`` a missing API key falls back to a fixed, obviously insecure value.
 
     The value is deterministic so that separate development processes (gateway and mock APIs) agree on it.
-    ``auth_signing_key`` never falls back here: the authorization server generates an ephemeral key instead.
+    ``auth_signing_key`` and database passwords never fall back: a made-up value would only hide a configuration
+    error (the authorization server generates an ephemeral key instead).
     """
 
     def __init__(self, inner: SecretProvider) -> None:
@@ -67,7 +75,7 @@ class DevFallbackSecretProvider:
         try:
             return self.inner.get(name)
         except SecretNotFound:
-            if name == "auth_signing_key":
+            if name in _NO_FALLBACK:
                 raise
             if name not in self._warned:
                 log.warning("secret %s not configured; using the insecure development value", name)

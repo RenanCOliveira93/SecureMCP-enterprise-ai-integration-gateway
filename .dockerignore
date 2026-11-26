@@ -1,0 +1,11 @@
+.git
+.venv
+.securemcp
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.db
+deploy/secrets
+tests
+reports
+.env

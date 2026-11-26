@@ -5,11 +5,15 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
-from sqlalchemy import event, text
+from sqlalchemy import event, make_url, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from securemcp.db.models import TENANT_TABLES, Base
+
+if TYPE_CHECKING:
+    from securemcp.security.secrets import SecretProvider
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +26,14 @@ _GRANTS = {
     "idempotency_records": "SELECT, INSERT, UPDATE, DELETE",
 }
 _DEFAULT_GRANT = "SELECT, INSERT, UPDATE"
+
+
+def with_secret_password(url: str, secret_name: str | None, secrets: SecretProvider) -> str:
+    """Insert a password from the secret provider so it never has to live in an environment variable or URL."""
+    if not secret_name:
+        return url
+    password = secrets.get(secret_name).get_secret_value()
+    return make_url(url).set(password=password).render_as_string(hide_password=False)
 
 
 def _sqlite_pragmas(dbapi_connection, _record) -> None:  # pragma: no cover - trivial

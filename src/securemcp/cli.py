@@ -22,6 +22,19 @@ app.add_typer(db_app, name="db")
 app.add_typer(audit_app, name="audit")
 
 
+def _owner_url(settings: Settings) -> str:
+    from securemcp.db.database import with_secret_password
+    from securemcp.security.secrets import build_secret_provider
+
+    if settings.database_owner_url:
+        return with_secret_password(
+            settings.database_owner_url, settings.database_owner_password_secret, build_secret_provider(settings)
+        )
+    return with_secret_password(
+        settings.database_url, settings.database_password_secret, build_secret_provider(settings)
+    )
+
+
 def _settings(**overrides: object) -> Settings:
     from securemcp.telemetry import configure_logging
 
@@ -109,7 +122,7 @@ def db_init(
     settings = _settings()
     if reset and settings.env == "prod":
         raise typer.BadParameter("--reset is refused when SECUREMCP_ENV=prod")
-    owner_url = settings.database_owner_url or settings.database_url
+    owner_url = _owner_url(settings)
 
     async def run() -> None:
         await create_schema(owner_url, reset=reset)
@@ -137,7 +150,7 @@ def audit_verify(
     settings = _settings()
 
     async def run() -> bool:
-        db = Database(settings.database_owner_url or settings.database_url)
+        db = Database(_owner_url(settings))
         try:
             tenants = tenant
             if not tenants:
@@ -213,6 +226,33 @@ def generate_signing_key(
     out.touch(mode=0o600, exist_ok=True)
     out.write_text(pem)
     typer.echo(f"wrote {out}", err=True)
+
+
+@app.command()
+def scenarios(
+    mocks_url: Annotated[str, typer.Option(help="Simulated services (fault-injection control endpoint).")] = (
+        "http://localhost:8081"
+    ),
+    report_file: Annotated[Path | None, typer.Option("--report", help="Write the Markdown report here.")] = None,
+    password_stdin: Annotated[bool, typer.Option(help="Read the synthetic users' password from stdin.")] = False,
+) -> None:
+    """Run the end-to-end scenarios (allowed, denied, tenant isolation, prompt injection, duplicate call, unavailable
+    service, approval, rate limit) against a running stack. Exit code 1 if any scenario misbehaves."""
+    from securemcp.scenarios import Runner, report
+
+    settings = _settings()
+    password = sys.stdin.readline().rstrip("\n") if password_stdin else getpass.getpass("synthetic users' password: ")
+    runner = Runner(
+        mcp_url=settings.host_mcp_url, mocks_url=mocks_url, password=password, redirect_uri=settings.host_redirect_uri
+    )
+    results = asyncio.run(runner.run())
+    text = report(results, mcp_url=settings.host_mcp_url)
+    typer.echo(text)
+    if report_file:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        report_file.write_text(text)
+    if not all(r.passed for r in results):
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":  # pragma: no cover

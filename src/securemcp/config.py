@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     # ----------------------------------------------------------------- database
     database_url: str = "sqlite+aiosqlite:///./securemcp.db"
     database_owner_url: str | None = None
+    database_password_secret: str | None = None
+    database_owner_password_secret: str | None = None
 
     # ------------------------------------------------- token verification (RS)
     auth_issuer: str = "http://localhost:9000"
